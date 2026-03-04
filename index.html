@@ -1,0 +1,1183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tape Tower Challenge</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        #game-container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        /* HUD Styles */
+        #hud {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+        }
+
+        .hud-button {
+            width: 50px;
+            height: 50px;
+            border: none;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin: 0 5px;
+        }
+
+        .hud-button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.1);
+        }
+
+        .hud-button:active {
+            transform: scale(0.95);
+        }
+
+        #timer-container {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        #timer {
+            font-size: 48px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            transition: color 0.3s ease;
+        }
+
+        #timer.warning {
+            color: #ffeb3b;
+            animation: pulse 1s infinite;
+        }
+
+        #timer.danger {
+            color: #f44336;
+            animation: pulse 0.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        .timer-label {
+            font-size: 14px;
+            opacity: 0.8;
+        }
+
+        #level-indicator {
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        /* Game Board */
+        #game-board {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        #poles-container {
+            display: flex;
+            gap: 40px;
+            align-items: flex-end;
+            padding: 40px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 20px;
+            backdrop-filter: blur(5px);
+        }
+
+        .pole {
+            position: relative;
+            width: 120px;
+            height: 300px;
+            display: flex;
+            flex-direction: column-reverse;
+            align-items: center;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+
+        .pole:hover {
+            transform: translateY(-5px);
+        }
+
+        .pole-base {
+            position: absolute;
+            bottom: -10px;
+            width: 100%;
+            height: 20px;
+            background: #333;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .pole-rod {
+            position: absolute;
+            bottom: 10px;
+            width: 10px;
+            height: 100%;
+            background: linear-gradient(to top, #444, #666);
+            border-radius: 5px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .tape {
+            width: 100px;
+            height: 40px;
+            margin: 2px 0;
+            border-radius: 20px;
+            position: relative;
+            z-index: 10;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .tape:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+        }
+
+        .tape.selected {
+            transform: translateY(-20px) scale(1.1);
+            animation: float 1s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(-20px) scale(1.1); }
+            50% { transform: translateY(-25px) scale(1.1); }
+        }
+
+        .tape.pink { background: linear-gradient(135deg, #ff6b9d, #ff4757); }
+        .tape.green { background: linear-gradient(135deg, #26de81, #20bf6b); }
+        .tape.orange { background: linear-gradient(135deg, #fd9644, #fa8231); }
+        .tape.blue { background: linear-gradient(135deg, #4834d4, #3742fa); }
+        .tape.yellow { background: linear-gradient(135deg, #fed330, #f7b731); }
+        .tape.purple { background: linear-gradient(135deg, #a55eea, #8854d0); }
+
+        .tape-inner {
+            width: 30px;
+            height: 30px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 50%;
+        }
+
+        /* Game Controls */
+        #game-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        #moves-counter {
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        #super-lens-container {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        #battery-meter {
+            width: 100px;
+            height: 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            overflow: hidden;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+
+        #battery-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #f7b731, #fd9644);
+            transition: width 0.3s ease;
+        }
+
+        #super-lens-btn {
+            padding: 15px 30px;
+            font-size: 16px;
+            font-weight: bold;
+            border: none;
+            border-radius: 30px;
+            background: linear-gradient(135deg, #fd9644, #fa8231);
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        #super-lens-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        #super-lens-btn:not(:disabled):hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+        }
+
+        /* Modals */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+        }
+
+        .modal.hidden {
+            display: none;
+        }
+
+        .modal-content {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .modal h2 {
+            font-size: 36px;
+            margin-bottom: 20px;
+        }
+
+        .modal p {
+            font-size: 18px;
+            margin-bottom: 30px;
+            opacity: 0.9;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+        }
+
+        .modal-button {
+            padding: 15px 30px;
+            font-size: 16px;
+            font-weight: bold;
+            border: none;
+            border-radius: 30px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .modal-button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+
+        /* Screens */
+        .screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            z-index: 2000;
+        }
+
+        .screen.hidden {
+            display: none;
+        }
+
+        .screen h1 {
+            font-size: 64px;
+            margin-bottom: 50px;
+            text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.5);
+            animation: titlePulse 2s ease-in-out infinite;
+        }
+
+        @keyframes titlePulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .menu-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .menu-button {
+            padding: 20px 60px;
+            font-size: 24px;
+            font-weight: bold;
+            border: none;
+            border-radius: 40px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            min-width: 300px;
+        }
+
+        .menu-button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+
+        #level-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 20px;
+            margin: 30px 0;
+        }
+
+        .level-button {
+            width: 80px;
+            height: 80px;
+            border: none;
+            border-radius: 15px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .level-button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.1);
+        }
+
+        .level-button.locked {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .level-button.completed {
+            background: rgba(76, 175, 80, 0.5);
+        }
+
+        .stars {
+            position: absolute;
+            bottom: 5px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 12px;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            #poles-container {
+                gap: 20px;
+                padding: 20px;
+            }
+
+            .pole {
+                width: 80px;
+                height: 250px;
+            }
+
+            .tape {
+                width: 70px;
+                height: 30px;
+            }
+
+            #timer {
+                font-size: 36px;
+            }
+
+            .screen h1 {
+                font-size: 48px;
+            }
+
+            .menu-button {
+                min-width: 250px;
+                padding: 15px 40px;
+                font-size: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="hud" class="hidden">
+            <div class="hud-left">
+                <button id="pause-btn" class="hud-button">⏸️</button>
+                <button id="reset-btn" class="hud-button">🔄</button>
+            </div>
+            <div class="hud-center">
+                <div id="timer-container">
+                    <div id="timer">60</div>
+                    <div class="timer-label">TIME</div>
+                </div>
+                <div id="level-indicator">Level 1</div>
+            </div>
+            <div class="hud-right">
+                <button id="hint-btn" class="hud-button">💡</button>
+                <button id="menu-btn" class="hud-button">☰</button>
+            </div>
+        </div>
+
+        <div id="game-board" class="hidden">
+            <div id="poles-container"></div>
+        </div>
+
+        <div id="game-controls" class="hidden">
+            <div id="moves-counter">Moves: 0</div>
+            <div id="super-lens-container">
+                <div id="battery-meter">
+                    <div id="battery-fill"></div>
+                </div>
+                <button id="super-lens-btn" disabled>🔥 SUPER LENS</button>
+            </div>
+        </div>
+
+        <!-- Game Over Modal -->
+        <div id="game-over-modal" class="modal hidden">
+            <div class="modal-content">
+                <h2 id="game-over-title">Time's Up!</h2>
+                <p id="game-over-message">You ran out of time!</p>
+                <div class="modal-buttons">
+                    <button id="retry-btn" class="modal-button">Retry</button>
+                    <button id="next-level-btn" class="modal-button hidden">Next Level</button>
+                    <button id="main-menu-btn" class="modal-button">Main Menu</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pause Modal -->
+        <div id="pause-modal" class="modal hidden">
+            <div class="modal-content">
+                <h2>Game Paused</h2>
+                <div class="modal-buttons">
+                    <button id="resume-btn" class="modal-button">Resume</button>
+                    <button id="pause-reset-btn" class="modal-button">Restart Level</button>
+                    <button id="pause-menu-btn" class="modal-button">Main Menu</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Menu -->
+        <div id="main-menu" class="screen">
+            <h1>Tape Tower Challenge</h1>
+            <div class="menu-buttons">
+                <button id="play-btn" class="menu-button">Play</button>
+                <button id="levels-btn" class="menu-button">Levels</button>
+                <button id="settings-btn" class="menu-button">Settings</button>
+            </div>
+        </div>
+
+        <!-- Level Select -->
+        <div id="level-select" class="screen hidden">
+            <h2>Select Level</h2>
+            <div id="level-grid"></div>
+            <button id="back-to-menu" class="menu-button">Back</button>
+        </div>
+    </div>
+
+    <script>
+        // Game State
+        const gameState = {
+            currentLevel: 1,
+            moves: 0,
+            timeLeft: 60,
+            isPlaying: false,
+            isPaused: false,
+            selectedTape: null,
+            selectedPole: null,
+            poles: [],
+            batteryLevel: 0,
+            completedLevels: JSON.parse(localStorage.getItem('completedLevels') || '[]'),
+            levelStars: JSON.parse(localStorage.getItem('levelStars') || '{}')
+        };
+
+        // Level Configurations
+        const levels = [
+            // Tutorial Levels (1-5)
+            {
+                id: 1,
+                name: "Getting Started",
+                poles: 4,
+                colors: ['pink', 'green'],
+                time: 90,
+                setup: [[1, 1, 0, 0], [0, 0, 1, 1], [], []],
+                minMoves: 4
+            },
+            {
+                id: 2,
+                name: "Easy Sorting",
+                poles: 4,
+                colors: ['pink', 'green'],
+                time: 80,
+                setup: [[1, 0, 1, 0], [0, 1, 0, 1], [], []],
+                minMoves: 6
+            },
+            {
+                id: 3,
+                name: "Three Colors",
+                poles: 4,
+                colors: ['pink', 'green', 'orange'],
+                time: 75,
+                setup: [[0, 1, 2], [2, 0, 1], [1, 2, 0], []],
+                minMoves: 9
+            },
+            {
+                id: 4,
+                name: "Stack Challenge",
+                poles: 4,
+                colors: ['pink', 'green', 'orange'],
+                time: 70,
+                setup: [[0, 0, 1, 1], [2, 2, 0, 1], [1, 2, 2, 0], []],
+                minMoves: 12
+            },
+            {
+                id: 5,
+                name: "Tutorial Complete",
+                poles: 4,
+                colors: ['pink', 'green', 'orange'],
+                time: 65,
+                setup: [[2, 1, 0, 2], [0, 2, 1, 0], [1, 0, 2, 1], []],
+                minMoves: 15
+            },
+            // Beginner Levels (6-20)
+            {
+                id: 6,
+                name: "Four Stack",
+                poles: 5,
+                colors: ['pink', 'green', 'orange', 'blue'],
+                time: 60,
+                setup: [[0, 1, 2, 3], [3, 2, 1, 0], [1, 3, 0, 2], [2, 0, 3, 1], []],
+                minMoves: 20
+            },
+            {
+                id: 7,
+                name: "Color Maze",
+                poles: 5,
+                colors: ['pink', 'green', 'orange', 'blue'],
+                time: 55,
+                setup: [[3, 3, 0, 0], [1, 1, 2, 2], [0, 0, 3, 3], [2, 2, 1, 1], []],
+                minMoves: 24
+            },
+            {
+                id: 8,
+                name: "Tower Mix",
+                poles: 5,
+                colors: ['pink', 'green', 'orange', 'blue'],
+                time: 50,
+                setup: [[0, 2, 1, 3, 0], [3, 1, 2, 0, 3], [2, 0, 3, 1, 2], [1, 3, 0, 2, 1], []],
+                minMoves: 28
+            },
+            // Add more levels as needed...
+        ];
+
+        // Audio Manager
+        class AudioManager {
+            constructor() {
+                this.sounds = {
+                    pickup: this.createSound(800, 0.1, 'sine'),
+                    place: this.createSound(400, 0.15, 'sine'),
+                    invalid: this.createSound(200, 0.2, 'sawtooth'),
+                    win: this.createSound([523, 659, 784], 0.3, 'sine'),
+                    tick: this.createSound(1000, 0.05, 'square'),
+                    warning: this.createSound([440, 220], 0.2, 'square')
+                };
+            }
+
+            createSound(frequency, duration, type) {
+                return () => {
+                    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    const oscillator = audioContext.createOscillator();
+                    const gainNode = audioContext.createGain();
+
+                    oscillator.connect(gainNode);
+                    gainNode.connect(audioContext.destination);
+
+                    if (Array.isArray(frequency)) {
+                        frequency.forEach((freq, index) => {
+                            setTimeout(() => {
+                                oscillator.frequency.value = freq;
+                            }, index * 100);
+                        });
+                    } else {
+                        oscillator.frequency.value = frequency;
+                    }
+
+                    oscillator.type = type;
+                    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+
+                    oscillator.start(audioContext.currentTime);
+                    oscillator.stop(audioContext.currentTime + duration);
+                };
+            }
+
+            play(soundName) {
+                if (this.sounds[soundName]) {
+                    this.sounds[soundName]();
+                }
+            }
+        }
+
+        const audio = new AudioManager();
+
+        // Game Engine
+        class TapeTowerGame {
+            constructor() {
+                this.initializeElements();
+                this.attachEventListeners();
+                this.showMainMenu();
+            }
+
+            initializeElements() {
+                // Screens
+                this.mainMenu = document.getElementById('main-menu');
+                this.levelSelect = document.getElementById('level-select');
+                
+                // Game elements
+                this.hud = document.getElementById('hud');
+                this.gameBoard = document.getElementById('game-board');
+                this.gameControls = document.getElementById('game-controls');
+                this.polesContainer = document.getElementById('poles-container');
+                
+                // HUD elements
+                this.timer = document.getElementById('timer');
+                this.levelIndicator = document.getElementById('level-indicator');
+                this.movesCounter = document.getElementById('moves-counter');
+                this.batteryFill = document.getElementById('battery-fill');
+                this.superLensBtn = document.getElementById('super-lens-btn');
+                
+                // Modals
+                this.gameOverModal = document.getElementById('game-over-modal');
+                this.pauseModal = document.getElementById('pause-modal');
+                
+                // Buttons
+                this.playBtn = document.getElementById('play-btn');
+                this.levelsBtn = document.getElementById('levels-btn');
+                this.pauseBtn = document.getElementById('pause-btn');
+                this.resetBtn = document.getElementById('reset-btn');
+                this.hintBtn = document.getElementById('hint-btn');
+                this.menuBtn = document.getElementById('menu-btn');
+            }
+
+            attachEventListeners() {
+                // Main menu
+                this.playBtn.addEventListener('click', () => this.startGame(1));
+                this.levelsBtn.addEventListener('click', () => this.showLevelSelect());
+                document.getElementById('back-to-menu').addEventListener('click', () => this.showMainMenu());
+                
+                // Game controls
+                this.pauseBtn.addEventListener('click', () => this.pauseGame());
+                this.resetBtn.addEventListener('click', () => this.resetLevel());
+                this.hintBtn.addEventListener('click', () => this.showHint());
+                this.menuBtn.addEventListener('click', () => this.showMainMenu());
+                this.superLensBtn.addEventListener('click', () => this.activateSuperLens());
+                
+                // Modal buttons
+                document.getElementById('retry-btn').addEventListener('click', () => this.resetLevel());
+                document.getElementById('next-level-btn').addEventListener('click', () => this.nextLevel());
+                document.getElementById('main-menu-btn').addEventListener('click', () => this.showMainMenu());
+                document.getElementById('resume-btn').addEventListener('click', () => this.resumeGame());
+                document.getElementById('pause-reset-btn').addEventListener('click', () => this.resetLevel());
+                document.getElementById('pause-menu-btn').addEventListener('click', () => this.showMainMenu());
+            }
+
+            showMainMenu() {
+                this.hideAllScreens();
+                this.mainMenu.classList.remove('hidden');
+                this.stopGame();
+            }
+
+            showLevelSelect() {
+                this.hideAllScreens();
+                this.levelSelect.classList.remove('hidden');
+                this.populateLevelGrid();
+            }
+
+            hideAllScreens() {
+                this.mainMenu.classList.add('hidden');
+                this.levelSelect.classList.add('hidden');
+                this.hud.classList.add('hidden');
+                this.gameBoard.classList.add('hidden');
+                this.gameControls.classList.add('hidden');
+                this.gameOverModal.classList.add('hidden');
+                this.pauseModal.classList.add('hidden');
+            }
+
+            populateLevelGrid() {
+                const grid = document.getElementById('level-grid');
+                grid.innerHTML = '';
+                
+                levels.forEach((level, index) => {
+                    const button = document.createElement('button');
+                    button.className = 'level-button';
+                    button.textContent = level.id;
+                    
+                    const isUnlocked = index === 0 || gameState.completedLevels.includes(index);
+                    const isCompleted = gameState.completedLevels.includes(level.id);
+                    
+                    if (!isUnlocked) {
+                        button.classList.add('locked');
+                        button.innerHTML = '🔒';
+                    } else {
+                        if (isCompleted) {
+                            button.classList.add('completed');
+                        }
+                        button.addEventListener('click', () => this.startGame(level.id));
+                    }
+                    
+                    if (isCompleted && gameState.levelStars[level.id]) {
+                        const stars = document.createElement('div');
+                        stars.className = 'stars';
+                        stars.textContent = '⭐'.repeat(gameState.levelStars[level.id]);
+                        button.appendChild(stars);
+                    }
+                    
+                    grid.appendChild(button);
+                });
+            }
+
+            startGame(levelId) {
+                const level = levels.find(l => l.id === levelId);
+                if (!level) return;
+                
+                gameState.currentLevel = levelId;
+                gameState.moves = 0;
+                gameState.timeLeft = level.time;
+                gameState.isPlaying = true;
+                gameState.isPaused = false;
+                gameState.batteryLevel = 0;
+                
+                this.hideAllScreens();
+                this.hud.classList.remove('hidden');
+                this.gameBoard.classList.remove('hidden');
+                this.gameControls.classList.remove('hidden');
+                
+                this.setupLevel(level);
+                this.updateUI();
+                this.startTimer();
+            }
+
+            setupLevel(level) {
+                this.polesContainer.innerHTML = '';
+                gameState.poles = [];
+                
+                for (let i = 0; i < level.poles; i++) {
+                    const pole = document.createElement('div');
+                    pole.className = 'pole';
+                    pole.dataset.poleIndex = i;
+                    
+                    const poleBase = document.createElement('div');
+                    poleBase.className = 'pole-base';
+                    
+                    const poleRod = document.createElement('div');
+                    poleRod.className = 'pole-rod';
+                    
+                    pole.appendChild(poleBase);
+                    pole.appendChild(poleRod);
+                    
+                    // Add tapes based on setup
+                    const tapes = [];
+                    if (level.setup[i]) {
+                        level.setup[i].forEach(colorIndex => {
+                            const tape = this.createTape(level.colors[colorIndex]);
+                            pole.appendChild(tape);
+                            tapes.push(level.colors[colorIndex]);
+                        });
+                    }
+                    
+                    gameState.poles.push(tapes);
+                    pole.addEventListener('click', () => this.handlePoleClick(i));
+                    this.polesContainer.appendChild(pole);
+                }
+                
+                this.levelIndicator.textContent = `Level ${level.id}`;
+            }
+
+            createTape(color) {
+                const tape = document.createElement('div');
+                tape.className = `tape ${color}`;
+                
+                const inner = document.createElement('div');
+                inner.className = 'tape-inner';
+                tape.appendChild(inner);
+                
+                return tape;
+            }
+
+            handlePoleClick(poleIndex) {
+                if (!gameState.isPlaying || gameState.isPaused) return;
+                
+                const pole = gameState.poles[poleIndex];
+                const poleElement = this.polesContainer.children[poleIndex];
+                
+                if (gameState.selectedTape === null) {
+                    // Pick up tape
+                    if (pole.length > 0) {
+                        gameState.selectedTape = pole[pole.length - 1];
+                        gameState.selectedPole = poleIndex;
+                        
+                        const tapeElements = poleElement.querySelectorAll('.tape');
+                        if (tapeElements.length > 0) {
+                            tapeElements[tapeElements.length - 1].classList.add('selected');
+                            audio.play('pickup');
+                        }
+                    }
+                } else {
+                    // Place tape
+                    if (poleIndex === gameState.selectedPole) {
+                        // Deselect
+                        this.deselectTape();
+                    } else if (this.canPlaceTape(poleIndex)) {
+                        // Move tape
+                        this.moveTape(gameState.selectedPole, poleIndex);
+                        audio.play('place');
+                        gameState.moves++;
+                        this.updateUI();
+                        
+                        // Check win condition
+                        if (this.checkWinCondition()) {
+                            this.winLevel();
+                        }
+                    } else {
+                        // Invalid move
+                        audio.play('invalid');
+                        this.shakeElement(poleElement);
+                    }
+                }
+            }
+
+            canPlaceTape(targetPoleIndex) {
+                const targetPole = gameState.poles[targetPoleIndex];
+                const level = levels.find(l => l.id === gameState.currentLevel);
+                
+                // Can place on empty pole
+                if (targetPole.length === 0) return true;
+                
+                // Can place if same color on top and not full
+                const topColor = targetPole[targetPole.length - 1];
+                const maxHeight = 6; // Maximum tapes per pole
+                
+                return topColor === gameState.selectedTape && targetPole.length < maxHeight;
+            }
+
+            moveTape(fromPoleIndex, toPoleIndex) {
+                // Update game state
+                const tape = gameState.poles[fromPoleIndex].pop();
+                gameState.poles[toPoleIndex].push(tape);
+                
+                // Update UI
+                const fromPole = this.polesContainer.children[fromPoleIndex];
+                const toPole = this.polesContainer.children[toPoleIndex];
+                
+                const tapeElement = fromPole.querySelector('.tape.selected');
+                if (tapeElement) {
+                    tapeElement.classList.remove('selected');
+                    toPole.appendChild(tapeElement);
+                }
+                
+                // Update battery level
+                gameState.batteryLevel = Math.min(100, gameState.batteryLevel + 10);
+                this.updateBattery();
+                
+                this.deselectTape();
+            }
+
+            deselectTape() {
+                const selectedElement = this.polesContainer.querySelector('.tape.selected');
+                if (selectedElement) {
+                    selectedElement.classList.remove('selected');
+                }
+                gameState.selectedTape = null;
+                gameState.selectedPole = null;
+            }
+
+            shakeElement(element) {
+                element.style.animation = 'shake 0.5s';
+                setTimeout(() => {
+                    element.style.animation = '';
+                }, 500);
+            }
+
+            checkWinCondition() {
+                const level = levels.find(l => l.id === gameState.currentLevel);
+                const colorCounts = {};
+                
+                // Count how many of each color we need
+                level.colors.forEach(color => {
+                    colorCounts[color] = 0;
+                });
+                
+                // Count colors in setup
+                level.setup.forEach(pole => {
+                    pole.forEach(colorIndex => {
+                        colorCounts[level.colors[colorIndex]]++;
+                    });
+                });
+                
+                // Check if each pole has only one color and all tapes are sorted
+                for (let pole of gameState.poles) {
+                    if (pole.length === 0) continue;
+                    
+                    const firstColor = pole[0];
+                    for (let tape of pole) {
+                        if (tape !== firstColor) return false;
+                    }
+                }
+                
+                // Check if all tapes are accounted for
+                let totalTapes = 0;
+                gameState.poles.forEach(pole => {
+                    totalTapes += pole.length;
+                });
+                
+                const expectedTapes = level.setup.reduce((sum, pole) => sum + pole.length, 0);
+                
+                return totalTapes === expectedTapes;
+            }
+
+            updateUI() {
+                this.movesCounter.textContent = `Moves: ${gameState.moves}`;
+                this.timer.textContent = gameState.timeLeft;
+                
+                // Update timer color based on time left
+                if (gameState.timeLeft <= 10) {
+                    this.timer.classList.add('danger');
+                    this.timer.classList.remove('warning');
+                } else if (gameState.timeLeft <= 20) {
+                    this.timer.classList.add('warning');
+                    this.timer.classList.remove('danger');
+                } else {
+                    this.timer.classList.remove('warning', 'danger');
+                }
+            }
+
+            updateBattery() {
+                this.batteryFill.style.width = `${gameState.batteryLevel}%`;
+                this.superLensBtn.disabled = gameState.batteryLevel < 100;
+            }
+
+            startTimer() {
+                if (this.timerInterval) clearInterval(this.timerInterval);
+                
+                this.timerInterval = setInterval(() => {
+                    if (!gameState.isPaused && gameState.isPlaying) {
+                        gameState.timeLeft--;
+                        this.updateUI();
+                        
+                        if (gameState.timeLeft <= 10 && gameState.timeLeft > 0) {
+                            audio.play('tick');
+                        }
+                        
+                        if (gameState.timeLeft <= 0) {
+                            this.gameOver();
+                        }
+                    }
+                }, 1000);
+            }
+
+            pauseGame() {
+                if (!gameState.isPlaying) return;
+                
+                gameState.isPaused = true;
+                this.pauseModal.classList.remove('hidden');
+            }
+
+            resumeGame() {
+                gameState.isPaused = false;
+                this.pauseModal.classList.add('hidden');
+            }
+
+            resetLevel() {
+                this.startGame(gameState.currentLevel);
+                this.gameOverModal.classList.add('hidden');
+                this.pauseModal.classList.add('hidden');
+            }
+
+            showHint() {
+                if (!gameState.isPlaying || gameState.isPaused) return;
+                
+                // Simple hint: highlight a valid move
+                for (let i = 0; i < gameState.poles.length; i++) {
+                    const pole = gameState.poles[i];
+                    if (pole.length > 0) {
+                        const topColor = pole[pole.length - 1];
+                        
+                        for (let j = 0; j < gameState.poles.length; j++) {
+                            if (i !== j) {
+                                const targetPole = gameState.poles[j];
+                                if (targetPole.length === 0 || 
+                                    (targetPole[targetPole.length - 1] === topColor && targetPole.length < 6)) {
+                                    // Highlight this move
+                                    const fromPoleElement = this.polesContainer.children[i];
+                                    const toPoleElement = this.polesContainer.children[j];
+                                    
+                                    fromPoleElement.style.animation = 'pulse 1s 2';
+                                    toPoleElement.style.animation = 'pulse 1s 2';
+                                    
+                                    setTimeout(() => {
+                                        fromPoleElement.style.animation = '';
+                                        toPoleElement.style.animation = '';
+                                    }, 2000);
+                                    
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            activateSuperLens() {
+                if (gameState.batteryLevel < 100) return;
+                
+                // Win instantly
+                gameState.batteryLevel = 0;
+                this.updateBattery();
+                
+                // Animate burning the door
+                this.superLensBtn.textContent = '🔥 BURNING DOOR! 🔥';
+                setTimeout(() => {
+                    this.winLevel();
+                }, 1500);
+            }
+
+            winLevel() {
+                gameState.isPlaying = false;
+                clearInterval(this.timerInterval);
+                
+                audio.play('win');
+                
+                // Calculate stars
+                const level = levels.find(l => l.id === gameState.currentLevel);
+                let stars = 1;
+                if (gameState.moves <= level.minMoves * 1.5) stars = 2;
+                if (gameState.moves <= level.minMoves) stars = 3;
+                
+                // Save progress
+                if (!gameState.completedLevels.includes(gameState.currentLevel)) {
+                    gameState.completedLevels.push(gameState.currentLevel);
+                    localStorage.setItem('completedLevels', JSON.stringify(gameState.completedLevels));
+                }
+                
+                if (!gameState.levelStars[gameState.currentLevel] || gameState.levelStars[gameState.currentLevel] < stars) {
+                    gameState.levelStars[gameState.currentLevel] = stars;
+                    localStorage.setItem('levelStars', JSON.stringify(gameState.levelStars));
+                }
+                
+                // Show win modal
+                document.getElementById('game-over-title').textContent = 'Level Complete!';
+                document.getElementById('game-over-message').textContent = 
+                    `You completed the level in ${gameState.moves} moves!\n${'⭐'.repeat(stars)}`;
+                document.getElementById('next-level-btn').classList.remove('hidden');
+                this.gameOverModal.classList.remove('hidden');
+            }
+
+            gameOver() {
+                gameState.isPlaying = false;
+                clearInterval(this.timerInterval);
+                
+                audio.play('warning');
+                
+                document.getElementById('game-over-title').textContent = "Time's Up!";
+                document.getElementById('game-over-message').textContent = 
+                    `You ran out of time! You made ${gameState.moves} moves.`;
+                document.getElementById('next-level-btn').classList.add('hidden');
+                this.gameOverModal.classList.remove('hidden');
+            }
+
+            nextLevel() {
+                const nextLevelId = gameState.currentLevel + 1;
+                if (nextLevelId <= levels.length) {
+                    this.startGame(nextLevelId);
+                    this.gameOverModal.classList.add('hidden');
+                } else {
+                    this.showMainMenu();
+                }
+            }
+
+            stopGame() {
+                gameState.isPlaying = false;
+                clearInterval(this.timerInterval);
+                this.deselectTape();
+            }
+        }
+
+        // Add shake animation
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes shake {
+                0%, 100% { transform: translateX(0); }
+                25% { transform: translateX(-10px); }
+                75% { transform: translateX(10px); }
+            }
+        `;
+        document.head.appendChild(style);
+
+        // Initialize game when DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            const game = new TapeTowerGame();
+        });
+    </script>
+</body>
+</html>
