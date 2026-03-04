@@ -856,10 +856,11 @@
                 const baseColors = ['pink', 'green', 'orange', 'blue', 'yellow', 'purple', 'red', 'cyan'];
                 
                 // Calculate level parameters based on level number
-                const numColors = Math.min(3 + Math.floor((levelNumber - 1) / 5), 8);
-                const numPoles = Math.min(4 + Math.floor((levelNumber - 1) / 15), 8);
-                const tapesPerColor = Math.min(3 + Math.floor((levelNumber - 1) / 20), 6);
-                const emptyPoles = Math.max(1, Math.min(2, numPoles - numColors));
+                // FIXED: Ensure we always have at least as many poles as colors + 1 empty
+                const numColors = Math.min(3 + Math.floor((levelNumber - 1) / 5), 6); // Max 6 colors
+                const minPoles = numColors + 1; // At least one empty pole
+                const numPoles = Math.min(minPoles + Math.floor((levelNumber - 1) / 20), 8); // Max 8 poles
+                const tapesPerColor = Math.min(3 + Math.floor((levelNumber - 1) / 20), 5); // Max 5 tapes per color
                 
                 // Time calculation - gets harder as levels progress
                 const baseTime = 120;
@@ -869,6 +870,11 @@
                 // Generate setup
                 const colors = baseColors.slice(0, numColors);
                 const setup = [];
+                
+                // Initialize empty poles
+                for (let i = 0; i < numPoles; i++) {
+                    setup.push([]);
+                }
                 
                 // Create array of all tapes
                 const allTapes = [];
@@ -884,25 +890,24 @@
                     [allTapes[i], allTapes[j]] = [allTapes[j], allTapes[i]];
                 }
                 
-                // Distribute tapes to poles
-                const filledPoles = numPoles - emptyPoles;
-                for (let i = 0; i < numPoles; i++) {
-                    setup.push([]);
+                // Distribute tapes to poles, leaving at least one empty
+                const maxFilledPoles = numPoles - 1; // Always leave at least one empty
+                let currentPole = 0;
+                let tapesPlaced = 0;
+                
+                while (tapesPlaced < allTapes.length) {
+                    // Place tape on current pole if it's not full
+                    if (setup[currentPole].length < tapesPerColor && currentPole < maxFilledPoles) {
+                        setup[currentPole].push(allTapes[tapesPlaced]);
+                        tapesPlaced++;
+                    }
+                    
+                    // Move to next pole
+                    currentPole = (currentPole + 1) % maxFilledPoles;
                 }
                 
-                let poleIndex = 0;
-                allTapes.forEach((tape, index) => {
-                    if (poleIndex < filledPoles) {
-                        setup[poleIndex].push(tape);
-                        if (setup[poleIndex].length >= tapesPerColor || 
-                            (index + 1) % Math.ceil(allTapes.length / filledPoles) === 0) {
-                            poleIndex++;
-                        }
-                    }
-                });
-                
                 // Calculate minimum moves (approximation)
-                const minMoves = Math.floor(allTapes.length * 1.5);
+                const minMoves = Math.floor(allTapes.length * 1.2);
                 
                 return {
                     id: levelNumber,
@@ -1089,6 +1094,7 @@
                 });
                 document.getElementById('pause-settings-btn').addEventListener('click', () => {
                     audio.play('button');
+                    this.pauseModal.classList.remove('visible');
                     this.showSettings();
                 });
                 document.getElementById('pause-reset-btn').addEventListener('click', () => {
@@ -1193,6 +1199,8 @@
                 gameState.timeLeft = gameState.settings.timer ? level.time : 999;
                 gameState.isPlaying = true;
                 gameState.isPaused = false;
+                gameState.selectedTape = null;
+                gameState.selectedPole = null;
                 
                 this.hideAllScreens();
                 document.body.classList.add('game-active');
@@ -1231,7 +1239,7 @@
                     
                     // Add tapes based on setup
                     const tapes = [];
-                    if (level.setup[i]) {
+                    if (level.setup[i] && level.setup[i].length > 0) {
                         level.setup[i].forEach(colorIndex => {
                             const tape = this.createTape(level.colors[colorIndex]);
                             pole.appendChild(tape);
@@ -1240,7 +1248,10 @@
                     }
                     
                     gameState.poles.push(tapes);
-                    pole.addEventListener('click', () => this.handlePoleClick(i));
+                    pole.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        this.handlePoleClick(i);
+                    });
                     this.polesContainer.appendChild(pole);
                 }
                 
@@ -1272,8 +1283,8 @@
                 const poleElement = this.polesContainer.children[poleIndex];
                 
                 if (gameState.selectedTape === null) {
-                    // Pick up tape
-                    if (pole.length > 0) {
+                    // Pick up tape - FIXED: Check if pole has tapes
+                    if (pole && pole.length > 0) {
                         gameState.selectedTape = pole[pole.length - 1];
                         gameState.selectedPole = poleIndex;
                         
@@ -1286,8 +1297,9 @@
                 } else {
                     // Place tape
                     if (poleIndex === gameState.selectedPole) {
-                        // Deselect
+                        // Deselect if clicking the same pole
                         this.deselectTape();
+                        audio.play('place');
                     } else if (this.canPlaceTape(poleIndex)) {
                         // Move tape
                         this.moveTape(gameState.selectedPole, poleIndex);
@@ -1297,7 +1309,7 @@
                         
                         // Check win condition
                         if (this.checkWinCondition()) {
-                            this.winLevel();
+                            setTimeout(() => this.winLevel(), 300);
                         }
                     } else {
                         // Invalid move
@@ -1311,7 +1323,7 @@
                 const targetPole = gameState.poles[targetPoleIndex];
                 
                 // Can place on empty pole
-                if (targetPole.length === 0) return true;
+                if (!targetPole || targetPole.length === 0) return true;
                 
                 // Can place if same color on top and not full
                 const topColor = targetPole[targetPole.length - 1];
@@ -1355,26 +1367,28 @@
             }
 
             checkWinCondition() {
-                // Check if each pole has only one color
+                // Check if each non-empty pole has only one color
+                let hasValidSorting = true;
+                let totalTapes = 0;
+                
                 for (let pole of gameState.poles) {
-                    if (pole.length === 0) continue;
-                    
-                    const firstColor = pole[0];
-                    for (let tape of pole) {
-                        if (tape !== firstColor) return false;
+                    if (pole.length > 0) {
+                        totalTapes += pole.length;
+                        const firstColor = pole[0];
+                        for (let tape of pole) {
+                            if (tape !== firstColor) {
+                                hasValidSorting = false;
+                                break;
+                            }
+                        }
                     }
                 }
                 
                 // Check if all tapes are accounted for
                 const level = LevelGenerator.generateLevel(gameState.currentLevel);
-                let totalTapes = 0;
-                gameState.poles.forEach(pole => {
-                    totalTapes += pole.length;
-                });
-                
                 const expectedTapes = level.setup.reduce((sum, pole) => sum + pole.length, 0);
                 
-                return totalTapes === expectedTapes;
+                return hasValidSorting && totalTapes === expectedTapes;
             }
 
             updateUI() {
@@ -1425,6 +1439,11 @@
             resumeGame() {
                 gameState.isPaused = false;
                 this.pauseModal.classList.remove('visible');
+                
+                // If we were in settings from pause menu, resume the game
+                if (this.settingsModal.classList.contains('visible')) {
+                    this.hideSettings();
+                }
             }
 
             resetLevel() {
@@ -1440,13 +1459,13 @@
                 // Find a valid move
                 for (let i = 0; i < gameState.poles.length; i++) {
                     const pole = gameState.poles[i];
-                    if (pole.length > 0) {
+                    if (pole && pole.length > 0) {
                         const topColor = pole[pole.length - 1];
                         
                         for (let j = 0; j < gameState.poles.length; j++) {
                             if (i !== j) {
                                 const targetPole = gameState.poles[j];
-                                if (targetPole.length === 0 || 
+                                if (!targetPole || targetPole.length === 0 || 
                                     (targetPole[targetPole.length - 1] === topColor && targetPole.length < 6)) {
                                     // Highlight this move
                                     const fromPoleElement = this.polesContainer.children[i];
@@ -1545,7 +1564,6 @@
                 if (gameState.isPlaying && !gameState.isPaused) {
                     this.pauseGame();
                 }
-                // In a real implementation, you might want to show a confirmation dialog
                 this.showMainMenu();
             }
 
@@ -1564,6 +1582,11 @@
             hideSettings() {
                 this.settingsModal.classList.remove('visible');
                 this.saveSettings();
+                
+                // If we came from pause menu and game is paused, show pause menu again
+                if (gameState.isPaused && gameState.isPlaying) {
+                    this.pauseModal.classList.add('visible');
+                }
             }
 
             updateSettingsUI() {
@@ -1584,12 +1607,23 @@
                 
                 if (setting === 'timer' && gameState.isPlaying) {
                     this.timer.classList.toggle('disabled', !gameState.settings.timer);
+                    if (!gameState.settings.timer) {
+                        gameState.timeLeft = 999;
+                    } else {
+                        // Reset timer to level default
+                        const level = LevelGenerator.generateLevel(gameState.currentLevel);
+                        gameState.timeLeft = level.time;
+                    }
+                    this.updateUI();
                 }
+                
+                this.saveSettings();
             }
 
             updateVolume(value) {
                 gameState.settings.volume = parseInt(value);
                 audio.setVolume(gameState.settings.volume);
+                this.saveSettings();
             }
 
             saveSettings() {
@@ -1624,9 +1658,10 @@
                         confetti.style.left = Math.random() * 100 + '%';
                         confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
                         confetti.style.animationDelay = Math.random() * 0.5 + 's';
+                        confetti.style.animationDuration = (2 + Math.random() * 2) + 's';
                         document.body.appendChild(confetti);
                         
-                        setTimeout(() => confetti.remove(), 3000);
+                        setTimeout(() => confetti.remove(), 4000);
                     }, i * 30);
                 }
             }
