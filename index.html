@@ -305,6 +305,23 @@
             text-transform: uppercase;
         }
 
+        /* Debug info */
+        #debug-info {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            font-family: monospace;
+            display: none;
+        }
+
+        #debug-info.visible {
+            display: block;
+        }
+
         /* Modals */
         .modal {
             position: fixed;
@@ -451,7 +468,6 @@
         .toggle-switch.active .toggle-slider {
             transform: translateX(30px);
         }
-
         .volume-slider {
             width: 150px;
             height: 6px;
@@ -724,6 +740,11 @@
 
         <div id="game-board" class="hidden">
             <div id="poles-container"></div>
+            <div id="debug-info">
+                <div>Colors: <span id="debug-colors">0</span></div>
+                <div>Poles: <span id="debug-poles">0</span></div>
+                <div>Tapes: <span id="debug-tapes">0</span></div>
+            </div>
         </div>
 
         <div id="game-controls" class="hidden">
@@ -795,6 +816,12 @@
                             <div class="toggle-slider"></div>
                         </div>
                     </div>
+                    <div class="setting-item">
+                        <span class="setting-label">Debug Info</span>
+                        <div class="toggle-switch" id="debug-toggle">
+                            <div class="toggle-slider"></div>
+                        </div>
+                    </div>
                 </div>
                 <div class="settings-group">
                     <h3>Audio</h3>
@@ -844,25 +871,30 @@
             completedLevels: JSON.parse(localStorage.getItem('completedLevels') || '[]'),
             levelStars: JSON.parse(localStorage.getItem('levelStars') || '{}'),
             bestMoves: JSON.parse(localStorage.getItem('bestMoves') || '{}'),
-            settings: JSON.parse(localStorage.getItem('settings') || '{"timer": true, "sound": true, "hints": true, "volume": 50}'),
+            settings: JSON.parse(localStorage.getItem('settings') || '{"timer": true, "sound": true, "hints": true, "volume": 50, "debug": false}'),
             isEndlessMode: false,
             endlessScore: 0
         };
 
-        // Level Generator
+        // Level Generator - FIXED VERSION
         class LevelGenerator {
             static generateLevel(levelNumber) {
-                const difficulty = Math.floor((levelNumber - 1) / 10) + 1;
                 const baseColors = ['pink', 'green', 'orange', 'blue', 'yellow', 'purple', 'red', 'cyan'];
                 
-                // Calculate level parameters based on level number
-                // FIXED: Ensure we always have at least as many poles as colors + 1 empty
-                const numColors = Math.min(3 + Math.floor((levelNumber - 1) / 5), 6); // Max 6 colors
-                const minPoles = numColors + 1; // At least one empty pole
-                const numPoles = Math.min(minPoles + Math.floor((levelNumber - 1) / 20), 8); // Max 8 poles
-                const tapesPerColor = Math.min(3 + Math.floor((levelNumber - 1) / 20), 5); // Max 5 tapes per color
+                // Calculate poles first, then colors based on available poles
+                const basePoles = 4; // Start with 4 poles
+                const additionalPoles = Math.floor((levelNumber - 1) / 15); // Add poles slowly
+                const numPoles = Math.min(basePoles + additionalPoles, 8); // Max 8 poles
                 
-                // Time calculation - gets harder as levels progress
+                // Colors must be at most (poles - 1) to ensure at least one empty pole
+                const maxColors = numPoles - 1;
+                const desiredColors = 3 + Math.floor((levelNumber - 1) / 5);
+                const numColors = Math.min(desiredColors, maxColors, 6); // Never exceed poles-1 or 6
+                
+                // Tapes per color increases with difficulty
+                const tapesPerColor = Math.min(3 + Math.floor((levelNumber - 1) / 20), 5);
+                
+                // Time calculation
                 const baseTime = 120;
                 const timeReduction = Math.min(60, levelNumber * 1.5);
                 const time = Math.max(30, Math.floor(baseTime - timeReduction));
@@ -890,23 +922,32 @@
                     [allTapes[i], allTapes[j]] = [allTapes[j], allTapes[i]];
                 }
                 
-                // Distribute tapes to poles, leaving at least one empty
+                // Distribute tapes more carefully
                 const maxFilledPoles = numPoles - 1; // Always leave at least one empty
-                let currentPole = 0;
-                let tapesPlaced = 0;
+                const maxTapesPerPole = Math.ceil(allTapes.length / maxFilledPoles);
                 
-                while (tapesPlaced < allTapes.length) {
-                    // Place tape on current pole if it's not full
-                    if (setup[currentPole].length < tapesPerColor && currentPole < maxFilledPoles) {
-                        setup[currentPole].push(allTapes[tapesPlaced]);
-                        tapesPlaced++;
+                let currentPole = 0;
+                for (let i = 0; i < allTapes.length; i++) {
+                    // Find a pole that isn't full
+                    let attempts = 0;
+                    while (setup[currentPole].length >= maxTapesPerPole && attempts < numPoles) {
+                        currentPole = (currentPole + 1) % maxFilledPoles;
+                        attempts++;
                     }
                     
-                    // Move to next pole
+                    // Place tape
+                    if (currentPole < maxFilledPoles) {
+                        setup[currentPole].push(allTapes[i]);
+                    }
+                    
+                    // Move to next pole for better distribution
                     currentPole = (currentPole + 1) % maxFilledPoles;
                 }
                 
-                // Calculate minimum moves (approximation)
+                // Verify the level is valid
+                console.log(`Level ${levelNumber}: ${numColors} colors, ${numPoles} poles, ${allTapes.length} tapes`);
+                
+                // Calculate minimum moves
                 const minMoves = Math.floor(allTapes.length * 1.2);
                 
                 return {
@@ -917,7 +958,8 @@
                     time: time,
                     setup: setup,
                     minMoves: minMoves,
-                    difficulty: this.getDifficultyLabel(levelNumber)
+                    difficulty: this.getDifficultyLabel(levelNumber),
+                    totalTapes: allTapes.length
                 };
             }
             
@@ -956,20 +998,24 @@
             playTone(frequency, duration, type) {
                 if (!this.enabled || !this.audioContext) return;
                 
-                const oscillator = this.audioContext.createOscillator();
-                const gainNode = this.audioContext.createGain();
-                
-                oscillator.connect(gainNode);
-                gainNode.connect(this.audioContext.destination);
-                
-                oscillator.frequency.value = frequency;
-                oscillator.type = type;
-                
-                gainNode.gain.setValueAtTime(0.3 * this.volume, this.audioContext.currentTime);
-                gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration);
-                
-                oscillator.start(this.audioContext.currentTime);
-                oscillator.stop(this.audioContext.currentTime + duration);
+                try {
+                    const oscillator = this.audioContext.createOscillator();
+                    const gainNode = this.audioContext.createGain();
+                    
+                    oscillator.connect(gainNode);
+                    gainNode.connect(this.audioContext.destination);
+                    
+                    oscillator.frequency.value = frequency;
+                    oscillator.type = type;
+                    
+                    gainNode.gain.setValueAtTime(0.3 * this.volume, this.audioContext.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration);
+                    
+                    oscillator.start(this.audioContext.currentTime);
+                    oscillator.stop(this.audioContext.currentTime + duration);
+                } catch (e) {
+                    console.log('Audio error:', e);
+                }
             }
 
             playSequence(frequencies, duration, type) {
@@ -1004,6 +1050,7 @@
         // Game Engine
         class TapeTowerGame {
             constructor() {
+                this.timerInterval = null;
                 this.initializeElements();
                 this.attachEventListeners();
                 this.applySettings();
@@ -1028,6 +1075,12 @@
                 this.minMovesValue = document.getElementById('min-moves-value');
                 this.bestMovesValue = document.getElementById('best-moves-value');
                 
+                // Debug elements
+                this.debugInfo = document.getElementById('debug-info');
+                this.debugColors = document.getElementById('debug-colors');
+                this.debugPoles = document.getElementById('debug-poles');
+                this.debugTapes = document.getElementById('debug-tapes');
+                
                 // Modals
                 this.gameOverModal = document.getElementById('game-over-modal');
                 this.pauseModal = document.getElementById('pause-modal');
@@ -1037,6 +1090,7 @@
                 this.timerToggle = document.getElementById('timer-toggle');
                 this.soundToggle = document.getElementById('sound-toggle');
                 this.hintsToggle = document.getElementById('hints-toggle');
+                this.debugToggle = document.getElementById('debug-toggle');
                 this.volumeSlider = document.getElementById('volume-slider');
             }
 
@@ -1110,6 +1164,7 @@
                 this.timerToggle.addEventListener('click', () => this.toggleSetting('timer'));
                 this.soundToggle.addEventListener('click', () => this.toggleSetting('sound'));
                 this.hintsToggle.addEventListener('click', () => this.toggleSetting('hints'));
+                this.debugToggle.addEventListener('click', () => this.toggleSetting('debug'));
                 this.volumeSlider.addEventListener('input', (e) => this.updateVolume(e.target.value));
                 document.getElementById('settings-close-btn').addEventListener('click', () => {
                     audio.play('button');
@@ -1147,7 +1202,6 @@
                 const grid = document.getElementById('level-grid');
                 grid.innerHTML = '';
                 
-                // Show up to 100 levels initially
                 const maxLevel = Math.max(100, Math.max(...gameState.completedLevels, 0) + 10);
                 
                 for (let i = 1; i <= maxLevel; i++) {
@@ -1168,7 +1222,6 @@
                         button.classList.add('current');
                     }
                     
-                    // Add difficulty label
                     const diffLabel = document.createElement('div');
                     diffLabel.className = 'difficulty-label';
                     diffLabel.textContent = LevelGenerator.getDifficultyLabel(i);
@@ -1222,6 +1275,16 @@
             setupLevel(level) {
                 this.polesContainer.innerHTML = '';
                 gameState.poles = [];
+                
+                // Update debug info
+                if (gameState.settings.debug) {
+                    this.debugInfo.classList.add('visible');
+                    this.debugColors.textContent = level.colors.length;
+                    this.debugPoles.textContent = level.poles;
+                    this.debugTapes.textContent = level.totalTapes;
+                } else {
+                    this.debugInfo.classList.remove('visible');
+                }
                 
                 for (let i = 0; i < level.poles; i++) {
                     const pole = document.createElement('div');
@@ -1283,7 +1346,7 @@
                 const poleElement = this.polesContainer.children[poleIndex];
                 
                 if (gameState.selectedTape === null) {
-                    // Pick up tape - FIXED: Check if pole has tapes
+                    // Pick up tape
                     if (pole && pole.length > 0) {
                         gameState.selectedTape = pole[pole.length - 1];
                         gameState.selectedPole = poleIndex;
@@ -1386,7 +1449,7 @@
                 
                 // Check if all tapes are accounted for
                 const level = LevelGenerator.generateLevel(gameState.currentLevel);
-                const expectedTapes = level.setup.reduce((sum, pole) => sum + pole.length, 0);
+                const expectedTapes = level.totalTapes;
                 
                 return hasValidSorting && totalTapes === expectedTapes;
             }
@@ -1440,7 +1503,6 @@
                 gameState.isPaused = false;
                 this.pauseModal.classList.remove('visible');
                 
-                // If we were in settings from pause menu, resume the game
                 if (this.settingsModal.classList.contains('visible')) {
                     this.hideSettings();
                 }
@@ -1583,7 +1645,6 @@
                 this.settingsModal.classList.remove('visible');
                 this.saveSettings();
                 
-                // If we came from pause menu and game is paused, show pause menu again
                 if (gameState.isPaused && gameState.isPlaying) {
                     this.pauseModal.classList.add('visible');
                 }
@@ -1593,6 +1654,7 @@
                 this.timerToggle.classList.toggle('active', gameState.settings.timer);
                 this.soundToggle.classList.toggle('active', gameState.settings.sound);
                 this.hintsToggle.classList.toggle('active', gameState.settings.hints);
+                this.debugToggle.classList.toggle('active', gameState.settings.debug);
                 this.volumeSlider.value = gameState.settings.volume;
             }
 
@@ -1610,11 +1672,22 @@
                     if (!gameState.settings.timer) {
                         gameState.timeLeft = 999;
                     } else {
-                        // Reset timer to level default
                         const level = LevelGenerator.generateLevel(gameState.currentLevel);
                         gameState.timeLeft = level.time;
                     }
                     this.updateUI();
+                }
+                
+                if (setting === 'debug') {
+                    if (gameState.settings.debug && gameState.isPlaying) {
+                        this.debugInfo.classList.add('visible');
+                        const level = LevelGenerator.generateLevel(gameState.currentLevel);
+                        this.debugColors.textContent = level.colors.length;
+                        this.debugPoles.textContent = level.poles;
+                        this.debugTapes.textContent = level.totalTapes;
+                    } else {
+                        this.debugInfo.classList.remove('visible');
+                    }
                 }
                 
                 this.saveSettings();
@@ -1642,7 +1715,7 @@
                     gameState.completedLevels = [];
                     gameState.levelStars = {};
                     gameState.bestMoves = {};
-                    gameState.settings = {timer: true, sound: true, hints: true, volume: 50};
+                    gameState.settings = {timer: true, sound: true, hints: true, volume: 50, debug: false};
                     this.applySettings();
                     this.hideSettings();
                     this.showMainMenu();
@@ -1659,6 +1732,8 @@
                         confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
                         confetti.style.animationDelay = Math.random() * 0.5 + 's';
                         confetti.style.animationDuration = (2 + Math.random() * 2) + 's';
+                        confetti.style.width = (5 + Math.random() * 10) + 'px';
+                        confetti.style.height = confetti.style.width;
                         document.body.appendChild(confetti);
                         
                         setTimeout(() => confetti.remove(), 4000);
@@ -1681,6 +1756,33 @@
         // Initialize game when DOM is loaded
         document.addEventListener('DOMContentLoaded', () => {
             const game = new TapeTowerGame();
+            
+            // Add keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                if (gameState.isPlaying && !gameState.isPaused) {
+                    switch(e.key) {
+                        case 'Escape':
+                            game.pauseGame();
+                            break;
+                        case 'r':
+                        case 'R':
+                            game.resetLevel();
+                            break;
+                        case 'h':
+                        case 'H':
+                            game.showHint();
+                            break;
+                    }
+                }
+            });
+        });
+
+        // Prevent accidental page refresh
+        window.addEventListener('beforeunload', (e) => {
+            if (gameState.isPlaying) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
         });
     </script>
 </body>
